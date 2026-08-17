@@ -91,6 +91,21 @@ def fetch_miners():
         f.write(html)
 
     miners = []
+    # 策略0: 页面内嵌 JSON (window.allTickersHashrateData = [...])
+    m = re.search(r"window\.allTickersHashrateData\s*=\s*(\[.*?\]);", html, re.S)
+    if m:
+        try:
+            for row in json.loads(m.group(1)):
+                t = str(row.get("ticker", "")).strip()
+                name = str(row.get("name", "")).strip()
+                ehs = row.get("operating_hashrate")
+                if t and ehs is not None and 0 < float(ehs) < 500:
+                    miners.append((t, name[:60], float(ehs)))
+        except Exception as e:  # noqa: BLE001
+            warnings.append(f"embedded-json parse miners failed: {e}")
+    if miners:
+        return _dedupe_miners(miners)
+
     # 策略1: pandas 解析所有表格
     try:
         import pandas as pd
@@ -124,32 +139,60 @@ def fetch_miners():
         ):
             miners.append((m.group(2), m.group(1).strip(), float(m.group(3))))
 
-    # 去重
+    out = _dedupe_miners(miners)
+    if not out:
+        warnings.append("miners: parse produced 0 rows — check debug/ziven_last.html")
+    return out
+
+
+def _dedupe_miners(miners):
     seen, out = set(), []
     for t, c, e in miners:
         if t not in seen and 0 < e < 500:
             seen.add(t)
             out.append((t, c, e))
-    if not out:
-        warnings.append("miners: parse produced 0 rows — check debug/ziven_last.html")
     return out
 
 
 # ---------------- stock prices ----------------
 
 def fetch_stocks():
-    syms = ",".join(f"{t.lower()}.us" for t in STOCK_TICKERS)
-    r = get(f"https://stooq.com/q/l/?s={syms}&f=sd2t2ohlcv&h&e=csv")
     out = []
-    for row in csv.DictReader(io.StringIO(r.text)):
-        try:
-            close = float(row["Close"])
-            sym = row["Symbol"].replace(".US", "").upper()
-            out.append((sym, close))
-        except (ValueError, KeyError):
-            continue
+    # 策略1: stooq 批量 CSV
+    try:
+        syms = ",".join(f"{t.lower()}.us" for t in STOCK_TICKERS)
+        r = get(f"https://stooq.com/q/l/?s={syms}&f=sd2t2ohlcv&h&e=csv", tries=2, timeout=20)
+        for row in csv.DictReader(io.StringIO(r.text)):
+            try:
+                close = float(row["Close"])
+                sym = row["Symbol"].replace(".US", "").upper()
+                out.append((sym, close))
+            except (ValueError, KeyError):
+                continue
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"stocks: stooq failed: {e}")
+
+    # 策略2: Yahoo Finance 逐个兜底
     if not out:
-        warnings.append("stocks: stooq returned no parsable rows")
+        for t in STOCK_TICKERS:
+            try:
+                j = get(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{t}"
+                    "?range=5d&interval=1d",
+                    tries=2, timeout=20,
+                ).json()
+                meta = j["chart"]["result"][0]["meta"]
+                px = meta.get("regularMarketPrice")
+                if px:
+                    out.append((t, float(px)))
+                time.sleep(0.5)
+            except Exception:  # noqa: BLE001
+                continue
+        if out:
+            warnings.append("stocks: used yahoo fallback")
+
+    if not out:
+        warnings.append("stocks: all sources returned no parsable rows")
     return out
 
 
