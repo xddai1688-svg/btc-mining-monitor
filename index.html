@@ -278,10 +278,12 @@ async function load() {
   NET = n; MIN = m; STK = s; META = meta;
   document.getElementById('updated').textContent =
     '数据截至 ' + (meta.date || (n.length ? n[n.length-1].date : '–')) + ' · 每日自动更新(北京时间 08:30)';
-  if ((meta.warnings || []).length) {
+  // 只有数据源真正失败才提示;兜底成功属正常,不提示
+  const failed = Object.entries(meta.sources_ok || {}).filter(([, v]) => !v).map(([k]) => k);
+  if (failed.length) {
     const wb = document.getElementById('warnbox');
     wb.style.display = 'block';
-    wb.textContent = '⚠ 最近一次采集有数据源异常,相关序列可能未更新:' + meta.warnings.join(' | ');
+    wb.textContent = '⚠ 最近一次采集失败的数据源:' + failed.join(', ') + ',相关序列可能未更新。' + (meta.warnings || []).join(' | ');
   }
   render();
 }
