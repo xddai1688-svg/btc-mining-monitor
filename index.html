@@ -102,7 +102,7 @@ footer a { color: var(--text-secondary); }
 </div>
 
 <div class="card">
-  <h2>上市矿企算力变化</h2><div class="note">EH/s,前 8 家(全部公司见下表)</div>
+  <h2>上市矿企算力份额</h2><div class="note">最新一日各矿企算力占追踪合计的比例,EH/s(全部公司见下表)</div>
   <div id="chMiners"></div>
 </div>
 
@@ -264,6 +264,67 @@ function niceStep(raw) {
   return 10 * mag;
 }
 
+// ---------------- SVG donut chart ----------------
+// spec: 2px surface 缝隙分隔扇区, 中心显示合计, ≥3.5% 的扇区直接标注, 全部有 tooltip + 图例
+function pieChart(el, opt) {
+  // opt: {items: [{label, color, value}], height, unit}
+  const host = typeof el === 'string' ? document.getElementById(el) : el;
+  host.innerHTML = '';
+  const items = opt.items.filter(it => it.value > 0);
+  if (!items.length) { host.innerHTML = '<div class="note">暂无数据(等待首次采集)</div>'; return; }
+  const W = Math.max(host.clientWidth || 520, 320), H = opt.height || 330;
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(W, H) / 2 - 46, r = R * 0.62;
+  const total = items.reduce((s, it) => s + it.value, 0);
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  const add = (tag, attrs, text) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    svg.appendChild(n); return n;
+  };
+  const wrap = document.createElement('div');
+  wrap.className = 'chartbox';
+  wrap.appendChild(svg);
+  const tip = document.createElement('div'); tip.className = 'tip'; wrap.appendChild(tip);
+  let a0 = -Math.PI / 2;
+  for (const it of items) {
+    const frac = it.value / total;
+    const a1 = a0 + frac * 2 * Math.PI;
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const px = a => cx + R * Math.cos(a), py = a => cy + R * Math.sin(a);
+    const qx = a => cx + r * Math.cos(a), qy = a => cy + r * Math.sin(a);
+    const d = `M ${px(a0).toFixed(1)} ${py(a0).toFixed(1)} A ${R} ${R} 0 ${large} 1 ${px(a1).toFixed(1)} ${py(a1).toFixed(1)} L ${qx(a1).toFixed(1)} ${qy(a1).toFixed(1)} A ${r} ${r} 0 ${large} 0 ${qx(a0).toFixed(1)} ${qy(a0).toFixed(1)} Z`;
+    const path = add('path', { d, fill: css(it.color), stroke: css('--surface-1'), 'stroke-width': 2 });
+    if (frac >= 0.035) {
+      const am = (a0 + a1) / 2;
+      const lx = cx + (R + 12) * Math.cos(am), ly = cy + (R + 12) * Math.sin(am);
+      const anchor = Math.cos(am) > 0.25 ? 'start' : (Math.cos(am) < -0.25 ? 'end' : 'middle');
+      add('text', { x: lx.toFixed(1), y: (ly + 3.5).toFixed(1), 'text-anchor': anchor, 'font-size': 11, fill: css('--text-secondary') },
+        `${it.label} ${(frac * 100).toFixed(1)}%`);
+    }
+    path.addEventListener('mousemove', ev => {
+      const rect = svg.getBoundingClientRect();
+      tip.innerHTML = `<b>${it.label}</b><div><i style="background:${css(it.color)}"></i>${fmt(it.value, 1)} ${opt.unit || ''} · 占比 ${(frac * 100).toFixed(1)}%</div>`;
+      tip.style.display = 'block';
+      const tw = tip.offsetWidth;
+      tip.style.left = Math.min(Math.max(ev.clientX - rect.left + 14, 0), rect.width - tw - 4) + 'px';
+      tip.style.top = '10px';
+    });
+    path.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+    a0 = a1;
+  }
+  add('text', { x: cx, y: cy - 4, 'text-anchor': 'middle', 'font-size': 24, 'font-weight': 600, fill: css('--text-primary') }, fmt(total, 1));
+  add('text', { x: cx, y: cy + 16, 'text-anchor': 'middle', 'font-size': 11, fill: css('--muted') }, (opt.unit || '') + ' 合计');
+  host.appendChild(wrap);
+  const lg = document.createElement('div'); lg.className = 'legend';
+  lg.innerHTML = items.map(it => `<span><i style="background:${css(it.color)}"></i>${it.label}</span>`).join('');
+  host.appendChild(lg);
+}
+
 // ---------------- state & data ----------------
 let NET = [], MIN = [], STK = [], META = {};
 let rangeDays = 90;
@@ -284,7 +345,8 @@ async function load() {
   if (failed.length) {
     const wb = document.getElementById('warnbox');
     wb.style.display = 'block';
-    wb.textContent = '⚠ 最近一次采集失败的数据源:' + failed.join(', ') + ',相关序列可能未更新。' + (meta.warnings || []).join(' | ');
+    wb.textContent = '⚠ 最近一次采集失败的数据源:' + failed.join(', ') +
+      ',相关序列可能未更新。' + (meta.warnings || []).join(' | ');
   }
   render();
 }
@@ -344,15 +406,12 @@ function renderCharts() {
   const latestDate = MIN.length ? MIN[MIN.length-1].date : null;
   const latest = MIN.filter(r => r.date === latestDate).sort((a,b) => +b.hashrate_ehs - +a.hashrate_ehs);
   const top = latest.slice(0, 8).map(r => r.ticker);
-  const minRows = MIN.filter(inRange);
-  lineChart('chMiners', {
-    height: 300,
-    series: top.map((t, i) => ({
-      label: t, color: SLOT[t] || ('--s' + ((i % 8) + 1)),
-      points: minRows.filter(r => r.ticker === t).map(r => ({x: r.date, y: +r.hashrate_ehs})),
-    })),
-    yFmt: v => fmt(v,1) + ' EH/s',
-  });
+  const items = latest.slice(0, 8).map((r, i) => ({
+    label: r.ticker, color: SLOT[r.ticker] || ('--s' + ((i % 8) + 1)), value: +r.hashrate_ehs,
+  }));
+  const rest = latest.slice(8).reduce((s, r) => s + +r.hashrate_ehs, 0);
+  if (rest > 0) items.push({ label: '其他', color: '--baseline', value: rest });
+  pieChart('chMiners', { items, height: 330, unit: 'EH/s' });
 
   const stkRows = STK.filter(inRange);
   const stkSeries = top.filter(t => stkRows.some(r => r.ticker === t)).map((t, i) => {
