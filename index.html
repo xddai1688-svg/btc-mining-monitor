@@ -269,11 +269,12 @@ let NET = [], MIN = [], STK = [], META = {};
 let rangeDays = 90;
 
 async function load() {
+  const CB = '?t=' + Math.floor(Date.now() / 60000);
   const [n, m, s, meta] = await Promise.all([
-    fetch('data/network.csv').then(r => r.text()).then(parseCSV).catch(() => []),
-    fetch('data/miners.csv').then(r => r.text()).then(parseCSV).catch(() => []),
-    fetch('data/stocks.csv').then(r => r.text()).then(parseCSV).catch(() => []),
-    fetch('data/latest.json').then(r => r.json()).catch(() => ({})),
+    fetch('data/network.csv' + CB).then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/miners.csv' + CB).then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/stocks.csv' + CB).then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/latest.json' + CB).then(r => r.json()).catch(() => ({})),
   ]);
   NET = n; MIN = m; STK = s; META = meta;
   document.getElementById('updated').textContent =
