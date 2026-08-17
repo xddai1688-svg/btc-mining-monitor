@@ -35,7 +35,8 @@ STOCK_TICKERS = [
     "WULF", "CIFR", "HUT", "CANG", "ABTC", "CAN",
 ]
 
-warnings = []
+warnings = []   # 真正的失败 (页面上提示)
+notes = []      # 信息性说明 (仅记录,不提示)
 
 
 def get(url, tries=3, timeout=30, **kw):
@@ -158,6 +159,7 @@ def _dedupe_miners(miners):
 
 def fetch_stocks():
     out = []
+    errs = []
     # 策略1: stooq 批量 CSV
     try:
         syms = ",".join(f"{t.lower()}.us" for t in STOCK_TICKERS)
@@ -170,7 +172,7 @@ def fetch_stocks():
             except (ValueError, KeyError):
                 continue
     except Exception as e:  # noqa: BLE001
-        warnings.append(f"stocks: stooq failed: {e}")
+        errs.append(f"stocks: stooq failed: {e}")
 
     # 策略2: Yahoo Finance 逐个兜底
     if not out:
@@ -189,9 +191,10 @@ def fetch_stocks():
             except Exception:  # noqa: BLE001
                 continue
         if out:
-            warnings.append("stocks: used yahoo fallback")
+            notes.append("stocks: primary source unavailable, used yahoo fallback")
 
     if not out:
+        warnings.extend(errs)
         warnings.append("stocks: all sources returned no parsable rows")
     return out
 
@@ -276,6 +279,7 @@ def main():
                 "date": TODAY,
                 "sources_ok": ok,
                 "warnings": warnings,
+                "notes": notes,
             },
             f, ensure_ascii=False, indent=1,
         )
