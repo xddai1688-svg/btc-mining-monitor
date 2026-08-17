@@ -1,0 +1,42 @@
+name: Daily data collection
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC = 北京时间 08:30
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests pandas lxml
+
+      - name: Collect data
+        run: python scripts/collect.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "btc-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/ debug/
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "data: $(date -u +%F) daily update"
+            git pull --rebase origin main
+            git push
+          fi
