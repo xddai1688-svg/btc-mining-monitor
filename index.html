@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC 挖矿行业监控</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-1:#fcfcfb; --page:#f9f9f7;
+  --text-primary:#0b0b0b; --text-secondary:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,0.10);
+  --up:#006300; --down:#d03b3b;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100;
+  --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-1:#1a1a19; --page:#0d0d0d;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,0.10);
+    --up:#0ca30c; --down:#d03b3b;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500;
+    --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  }
+}
+* { box-sizing: border-box; margin: 0; }
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--page); color: var(--text-primary);
+  padding: 24px; max-width: 1180px; margin: 0 auto;
+}
+header { margin-bottom: 20px; }
+h1 { font-size: 22px; font-weight: 650; }
+.sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.warnbox { margin-top:8px; font-size:12px; color: var(--text-secondary);
+  border:1px solid var(--border); border-radius:8px; padding:6px 10px; display:none; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 12px; margin-bottom: 20px; }
+.tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
+.tile .label { font-size: 12px; color: var(--text-secondary); }
+.tile .value { font-size: 26px; font-weight: 600; margin-top: 4px; }
+.tile .delta { font-size: 12px; margin-top: 4px; color: var(--text-secondary); }
+.delta .pos { color: var(--up); } .delta .neg { color: var(--down); }
+.filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.filters button {
+  font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-secondary); cursor: pointer;
+}
+.filters button.active { color: var(--text-primary); font-weight: 650; border-color: var(--baseline); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.card h2 { font-size: 14px; font-weight: 650; margin-bottom: 2px; }
+.card .note { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.chartbox { position: relative; }
+.chartbox svg { display: block; width: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; margin-top: 8px; font-size: 12px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.tip {
+  position: absolute; pointer-events: none; display: none; z-index: 5;
+  background: var(--surface-1); border: 1px solid var(--baseline); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; color: var(--text-secondary);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12); white-space: nowrap;
+}
+.tip b { color: var(--text-primary); display: block; margin-bottom: 3px; font-weight: 600; }
+.tip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: right; color: var(--text-secondary); font-weight: 550; padding: 6px 8px; border-bottom: 1px solid var(--baseline); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+td.pos { color: var(--up); } td.neg { color: var(--down); }
+.tablewrap { overflow-x: auto; }
+footer { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.7; }
+footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+<header>
+  <h1>BTC 挖矿行业监控</h1>
+  <div class="sub" id="updated">加载中…</div>
+  <div class="warnbox" id="warnbox"></div>
+</header>
+
+<div class="tiles" id="tiles"></div>
+
+<div class="filters" id="rangeFilters">
+  <button data-days="30">30 天</button>
+  <button data-days="90" class="active">90 天</button>
+  <button data-days="365">1 年</button>
+  <button data-days="0">全部</button>
+</div>
+
+<div class="grid2">
+  <div class="card"><h2>全网算力</h2><div class="note">EH/s,日频</div><div id="chHash"></div></div>
+  <div class="card"><h2>Hashprice</h2><div class="note">USD / PH/s / 天(由区块奖励与价格计算)</div><div id="chHp"></div></div>
+  <div class="card"><h2>BTC 价格</h2><div class="note">USD</div><div id="chPrice"></div></div>
+  <div class="card"><h2>挖矿难度</h2><div class="note">T(万亿)</div><div id="chDiff"></div></div>
+</div>
+
+<div class="card">
+  <h2>上市矿企算力变化</h2><div class="note">EH/s,前 8 家(全部公司见下表)</div>
+  <div id="chMiners"></div>
+</div>
+
+<div class="card">
+  <h2>矿企股价(区间起点 = 100)</h2><div class="note">指数化对比,颜色与上图公司一致</div>
+  <div id="chStocks"></div>
+</div>
+
+<div class="card">
+  <h2>矿企明细</h2><div class="note">最新算力与区间变化</div>
+  <div class="tablewrap"><table id="minerTable"></table></div>
+</div>
+
+<footer>
+  数据源:全网算力/难度/奖励 mempool.space · 价格 Coinbase · 矿企算力 ziven.io · 股价 stooq.com<br>
+  每日北京时间 08:30 自动更新 · 历史数据下载:
+  <a href="data/network.csv">network.csv</a> ·
+  <a href="data/miners.csv">miners.csv</a> ·
+  <a href="data/stocks.csv">stocks.csv</a>
+</footer>
+
+<script>
+"use strict";
+// ---------------- utils ----------------
+function parseCSV(text) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cell); cell = ''; }
+    else if (ch === '\n') { row.push(cell); cell = ''; if (row.some(c => c !== '')) rows.push(row); row = []; }
+    else if (ch !== '\r') cell += ch;
+  }
+  if (cell !== '' || row.length) { row.push(cell); if (row.some(c => c !== '')) rows.push(row); }
+  const header = rows.shift();
+  return rows.map(r => Object.fromEntries(header.map((h, i) => [h, r[i]])));
+}
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (n, d=1) => (n == null || isNaN(n)) ? '–' : Number(n).toLocaleString('en-US', {maximumFractionDigits: d});
+const pct = n => n == null ? '' : (n >= 0 ? '+' : '') + n.toFixed(1) + '%';
+
+// 固定的公司→颜色槽位(颜色跟随实体,不随排名变化)
+const SLOT = { BTDR:'--s1', MARA:'--s2', CLSK:'--s3', RIOT:'--s4', IREN:'--s5', ABTC:'--s6', HIVE:'--s7', CANG:'--s8' };
+
+// ---------------- SVG line chart ----------------
+// spec: 2px 线, 圆角连接, 面积 10% 洗色(单序列), hairline 网格, 悬浮十字线+tooltip, ≥2 序列有图例
+function lineChart(el, opt) {
+  // opt: {series:[{label,color,points:[{x(date str),y}]}], height, yFmt, area}
+  const host = typeof el === 'string' ? document.getElementById(el) : el;
+  host.innerHTML = '';
+  const W = Math.max(host.clientWidth || 520, 320), H = opt.height || 260;
+  const padL = 46, padR = 14, padT = 12, padB = 26;
+  const dates = [...new Set(opt.series.flatMap(s => s.points.map(p => p.x)))].sort();
+  if (!dates.length) { host.innerHTML = '<div class="note">暂无数据(等待首次采集)</div>'; return; }
+  const xi = Object.fromEntries(dates.map((d, i) => [d, i]));
+  const xpos = i => dates.length === 1 ? (padL + (W - padL - padR) / 2) : padL + (W - padL - padR) * i / (dates.length - 1);
+  let ys = opt.series.flatMap(s => s.points.map(p => p.y)).filter(v => v != null && !isNaN(v));
+  let ymin = Math.min(...ys), ymax = Math.max(...ys);
+  if (ymin === ymax) { ymin -= 1; ymax += 1; }
+  const span = ymax - ymin; ymin -= span * 0.08; ymax += span * 0.08;
+  // clean y ticks
+  const step = niceStep((ymax - ymin) / 4);
+  const yticks = [];
+  for (let v = Math.ceil(ymin / step) * step; v <= ymax; v += step) yticks.push(v);
+  const ypos = v => padT + (H - padT - padB) * (1 - (v - ymin) / (ymax - ymin));
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W); svg.setAttribute('height', H);
+  const add = (parent, tag, attrs, text) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    if (text != null) n.textContent = text;
+    parent.appendChild(n); return n;
+  };
+  // gridlines + y labels
+  for (const v of yticks) {
+    add(svg, 'line', { x1: padL, x2: W - padR, y1: ypos(v), y2: ypos(v), stroke: css('--grid'), 'stroke-width': 1 });
+    add(svg, 'text', { x: padL - 6, y: ypos(v) + 3.5, 'text-anchor': 'end', 'font-size': 10.5, fill: css('--muted'), style: 'font-variant-numeric:tabular-nums' }, fmt(v, Math.abs(v) < 10 ? 1 : 0));
+  }
+  // baseline
+  add(svg, 'line', { x1: padL, x2: W - padR, y1: H - padB, y2: H - padB, stroke: css('--baseline'), 'stroke-width': 1 });
+  // x labels (≤6)
+  const nlab = Math.min(6, dates.length);
+  for (let k = 0; k < nlab; k++) {
+    const i = Math.round(k * (dates.length - 1) / Math.max(nlab - 1, 1));
+    add(svg, 'text', { x: xpos(i), y: H - 8, 'text-anchor': k === 0 ? 'start' : (k === nlab - 1 ? 'end' : 'middle'), 'font-size': 10.5, fill: css('--muted') }, dates[i].slice(5));
+  }
+  // series
+  for (const s of opt.series) {
+    const pts = dates.map(d => {
+      const p = s.points.find(p => p.x === d);
+      return p && p.y != null && !isNaN(p.y) ? { x: xpos(xi[d]), y: ypos(p.y) } : null;
+    });
+    const segs = [];
+    let cur = [];
+    for (const p of pts) { if (p) cur.push(p); else if (cur.length) { segs.push(cur); cur = []; } }
+    if (cur.length) segs.push(cur);
+    const col = css(s.color);
+    for (const seg of segs) {
+      const d = seg.map((p, i) => (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join(' ');
+      if (opt.area && opt.series.length === 1 && seg.length > 1) {
+        add(svg, 'path', { d: d + ` L${seg[seg.length-1].x.toFixed(1)} ${H - padB} L${seg[0].x.toFixed(1)} ${H - padB} Z`, fill: col, opacity: 0.1 });
+      }
+      if (seg.length === 1) {
+        add(svg, 'circle', { cx: seg[0].x, cy: seg[0].y, r: 4, fill: col, stroke: css('--surface-1'), 'stroke-width': 2 });
+      } else {
+        add(svg, 'path', { d, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' });
+      }
+    }
+  }
+  // hover layer
+  const wrap = document.createElement('div');
+  wrap.className = 'chartbox';
+  wrap.appendChild(svg);
+  const tip = document.createElement('div'); tip.className = 'tip'; wrap.appendChild(tip);
+  const cross = add(svg, 'line', { y1: padT, y2: H - padB, stroke: css('--baseline'), 'stroke-width': 1, visibility: 'hidden' });
+  const hoverDots = opt.series.map(s => add(svg, 'circle', { r: 4.5, fill: css(s.color), stroke: css('--surface-1'), 'stroke-width': 2, visibility: 'hidden' }));
+  svg.addEventListener('mousemove', ev => {
+    const rect = svg.getBoundingClientRect();
+    const mx = (ev.clientX - rect.left) * W / rect.width;
+    let best = 0, bd = 1e9;
+    for (let i = 0; i < dates.length; i++) { const d = Math.abs(xpos(i) - mx); if (d < bd) { bd = d; best = i; } }
+    const date = dates[best], x = xpos(best);
+    cross.setAttribute('x1', x); cross.setAttribute('x2', x); cross.setAttribute('visibility', 'visible');
+    let html = `<b>${date}</b>`;
+    opt.series.forEach((s, si) => {
+      const p = s.points.find(p => p.x === date);
+      if (p && p.y != null && !isNaN(p.y)) {
+        hoverDots[si].setAttribute('cx', x); hoverDots[si].setAttribute('cy', ypos(p.y)); hoverDots[si].setAttribute('visibility', 'visible');
+        html += `<div><i style="background:${css(s.color)}"></i>${s.label}: ${opt.yFmt(p.y)}</div>`;
+      } else hoverDots[si].setAttribute('visibility', 'hidden');
+    });
+    tip.innerHTML = html; tip.style.display = 'block';
+    const tw = tip.offsetWidth;
+    const px = ev.clientX - rect.left;
+    tip.style.left = Math.min(Math.max(px + 14, 0), rect.width - tw - 4) + 'px';
+    tip.style.top = '10px';
+  });
+  svg.addEventListener('mouseleave', () => {
+    tip.style.display = 'none'; cross.setAttribute('visibility', 'hidden');
+    hoverDots.forEach(d => d.setAttribute('visibility', 'hidden'));
+  });
+  host.appendChild(wrap);
+  // legend (≥2 序列)
+  if (opt.series.length > 1) {
+    const lg = document.createElement('div'); lg.className = 'legend';
+    lg.innerHTML = opt.series.map(s => `<span><i style="background:${css(s.color)}"></i>${s.label}</span>`).join('');
+    host.appendChild(lg);
+  }
+}
+function niceStep(raw) {
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.abs(raw) || 1)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * mag) return m * mag;
+  return 10 * mag;
+}
+
+// ---------------- state & data ----------------
+let NET = [], MIN = [], STK = [], META = {};
+let rangeDays = 90;
+
+async function load() {
+  const [n, m, s, meta] = await Promise.all([
+    fetch('data/network.csv').then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/miners.csv').then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/stocks.csv').then(r => r.text()).then(parseCSV).catch(() => []),
+    fetch('data/latest.json').then(r => r.json()).catch(() => ({})),
+  ]);
+  NET = n; MIN = m; STK = s; META = meta;
+  document.getElementById('updated').textContent =
+    '数据截至 ' + (meta.date || (n.length ? n[n.length-1].date : '–')) + ' · 每日自动更新(北京时间 08:30)';
+  if ((meta.warnings || []).length) {
+    const wb = document.getElementById('warnbox');
+    wb.style.display = 'block';
+    wb.textContent = '⚠ 最近一次采集有数据源异常,相关序列可能未更新:' + meta.warnings.join(' | ');
+  }
+  render();
+}
+
+const cutoff = () => {
+  if (!rangeDays) return '0000-00-00';
+  const d = new Date(); d.setDate(d.getDate() - rangeDays);
+  return d.toISOString().slice(0, 10);
+};
+const inRange = r => r.date >= cutoff();
+
+function deltaPct(series, days) {
+  if (series.length < 2) return null;
+  const last = series[series.length - 1];
+  const target = new Date(last.date); target.setDate(target.getDate() - days);
+  const ts = target.toISOString().slice(0, 10);
+  let base = null;
+  for (const p of series) { if (p.date <= ts) base = p; }
+  if (!base) base = series[0];
+  if (base === last || !base.v) return null;
+  return (last.v / base.v - 1) * 100;
+}
+
+// ---------------- render ----------------
+function tile(label, value, unit, dPct, dLabel, upIsGood=true) {
+  let deltaHtml = '';
+  if (dPct != null) {
+    const good = (dPct >= 0) === upIsGood;
+    deltaHtml = `<div class="delta"><span class="${good ? 'pos' : 'neg'}">${dPct >= 0 ? '▲' : '▼'} ${pct(dPct)}</span> ${dLabel}</div>`;
+  }
+  return `<div class="tile"><div class="label">${label}</div><div class="value">${value}<span style="font-size:14px;color:var(--muted)"> ${unit}</span></div>${deltaHtml}</div>`;
+}
+
+function renderTiles() {
+  const el = document.getElementById('tiles');
+  if (!NET.length) { el.innerHTML = ''; return; }
+  const last = NET[NET.length - 1];
+  const series = k => NET.filter(r => r[k]).map(r => ({date: r.date, v: +r[k]}));
+  el.innerHTML =
+    tile('全网算力', fmt(+last.hashrate_ehs, 0), 'EH/s', deltaPct(series('hashrate_ehs'), 7), 'vs 7天前') +
+    tile('Hashprice', '$' + fmt(+last.hashprice_usd_ph_day, 2), '/PH/天', deltaPct(series('hashprice_usd_ph_day'), 7), 'vs 7天前') +
+    tile('BTC 价格', '$' + fmt(+last.btc_price_usd, 0), '', deltaPct(series('btc_price_usd'), 7), 'vs 7天前') +
+    tile('挖矿难度', fmt(+last.difficulty / 1e12, 1), 'T', deltaPct(series('difficulty'), 14), 'vs 14天前', false);
+}
+
+function netSeries(key, scale=1) {
+  return NET.filter(inRange).filter(r => r[key] !== '' && r[key] != null)
+    .map(r => ({x: r.date, y: +r[key] * scale}));
+}
+
+function renderCharts() {
+  lineChart('chHash',  { series: [{label:'全网算力', color:'--s1', points: netSeries('hashrate_ehs')}], yFmt: v => fmt(v,0)+' EH/s', area: true, height: 240 });
+  lineChart('chHp',    { series: [{label:'Hashprice', color:'--s1', points: netSeries('hashprice_usd_ph_day')}], yFmt: v => '$'+fmt(v,2)+'/PH/天', area: true, height: 240 });
+  lineChart('chPrice', { series: [{label:'BTC', color:'--s1', points: netSeries('btc_price_usd')}], yFmt: v => '$'+fmt(v,0), area: true, height: 240 });
+  lineChart('chDiff',  { series: [{label:'难度', color:'--s1', points: netSeries('difficulty', 1e-12)}], yFmt: v => fmt(v,1)+' T', area: true, height: 240 });
+
+  const latestDate = MIN.length ? MIN[MIN.length-1].date : null;
+  const latest = MIN.filter(r => r.date === latestDate).sort((a,b) => +b.hashrate_ehs - +a.hashrate_ehs);
+  const top = latest.slice(0, 8).map(r => r.ticker);
+  const minRows = MIN.filter(inRange);
+  lineChart('chMiners', {
+    height: 300,
+    series: top.map((t, i) => ({
+      label: t, color: SLOT[t] || ('--s' + ((i % 8) + 1)),
+      points: minRows.filter(r => r.ticker === t).map(r => ({x: r.date, y: +r.hashrate_ehs})),
+    })),
+    yFmt: v => fmt(v,1) + ' EH/s',
+  });
+
+  const stkRows = STK.filter(inRange);
+  const stkSeries = top.filter(t => stkRows.some(r => r.ticker === t)).map((t, i) => {
+    const rows = stkRows.filter(r => r.ticker === t);
+    const base = rows.length ? +rows[0].close_usd : null;
+    return { label: t, color: SLOT[t] || ('--s' + ((i % 8) + 1)),
+             points: rows.map(r => ({x: r.date, y: +r.close_usd / base * 100})) };
+  }).filter(s => s.points.length);
+  const stEl = document.getElementById('chStocks');
+  if (stkSeries.length) lineChart(stEl, { height: 300, series: stkSeries, yFmt: v => fmt(v,1) });
+  else stEl.innerHTML = '<div class="note">暂无股价数据(等待首次采集)</div>';
+}
+
+function renderTable() {
+  const el = document.getElementById('minerTable');
+  if (!MIN.length) { el.innerHTML = ''; return; }
+  const latestDate = MIN[MIN.length-1].date;
+  const latest = MIN.filter(r => r.date === latestDate).sort((a,b) => +b.hashrate_ehs - +a.hashrate_ehs);
+  const hSeries = t => MIN.filter(r => r.ticker === t).map(r => ({date: r.date, v: +r.hashrate_ehs}));
+  const sSeries = t => STK.filter(r => r.ticker === t).map(r => ({date: r.date, v: +r.close_usd}));
+  const cell = v => v == null ? '<td>–</td>' : `<td class="${v >= 0 ? 'pos' : 'neg'}">${v >= 0 ? '▲' : '▼'} ${pct(v)}</td>`;
+  el.innerHTML = '<tr><th>公司</th><th>算力 EH/s</th><th>算力Δ7天</th><th>Δ30天</th><th>Δ90天</th><th>股价</th><th>股价Δ30天</th></tr>' +
+    latest.map(r => {
+      const t = r.ticker, hs = hSeries(t), ss = sSeries(t);
+      const px = ss.length ? ss[ss.length-1].v : null;
+      const slot = SLOT[t];
+      return `<tr><td><span class="dot" style="background:${slot ? 'var(' + slot + ')' : 'var(--baseline)'}"></span>${r.company} <span style="color:var(--muted)">${t}</span></td>` +
+        `<td>${fmt(+r.hashrate_ehs, 1)}</td>` + cell(deltaPct(hs, 7)) + cell(deltaPct(hs, 30)) + cell(deltaPct(hs, 90)) +
+        `<td>${px == null ? '–' : '$' + fmt(px, 2)}</td>` + cell(ss.length >= 2 ? deltaPct(ss, 30) : null) + '</tr>';
+    }).join('');
+}
+
+function render() { renderTiles(); renderCharts(); renderTable(); }
+
+document.getElementById('rangeFilters').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#rangeFilters button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  rangeDays = +e.target.dataset.days;
+  render();
+});
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+let rzt; window.addEventListener('resize', () => { clearTimeout(rzt); rzt = setTimeout(render, 200); });
+load();
+</script>
+</body>
+</html>
