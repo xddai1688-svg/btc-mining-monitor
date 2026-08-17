@@ -1,0 +1,43 @@
+name: Backfill history
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "回补天数"
+        default: "30"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Backfill
+        env:
+          BACKFILL_DAYS: ${{ github.event.inputs.days || '30' }}
+        run: python scripts/backfill.py
+
+      - name: Commit and push
+        run: |
+          git config user.name "btc-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "data: backfill history"
+            git pull --rebase origin main
+            git push
+          fi
