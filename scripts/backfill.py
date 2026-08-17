@@ -33,8 +33,9 @@ def existing_dates(path):
 def main():
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    # 1) 算力日均值 + 难度调整
-    j = get("https://mempool.space/api/v1/mining/hashrate/6m").json()
+    # 1) 算力日均值 + 难度调整 (窗口按回补天数选择)
+    interval = "1y" if DAYS > 150 else "6m"
+    j = get(f"https://mempool.space/api/v1/mining/hashrate/{interval}").json()
     hr = {}
     for p in j.get("hashrates", []):
         ts = p.get("timestamp") or p.get("time")
@@ -51,18 +52,24 @@ def main():
     price = {}
     try:
         end = int(time.time())
-        start = end - (DAYS + 3) * 86400
-        r = get(
-            "https://api.exchange.coinbase.com/products/BTC-USD/candles"
-            f"?granularity=86400&start={start}&end={end}"
-        )
-        for row in r.json():
-            price[day(row[0])] = float(row[4])
+        start_all = end - (DAYS + 3) * 86400
+        chunk = 250 * 86400  # coinbase 单次最多 300 根日K,分段拉取
+        s = start_all
+        while s < end:
+            e2 = min(s + chunk, end)
+            r = get(
+                "https://api.exchange.coinbase.com/products/BTC-USD/candles"
+                f"?granularity=86400&start={s}&end={e2}"
+            )
+            for row in r.json():
+                price[day(row[0])] = float(row[4])
+            s = e2
+            time.sleep(0.4)
     except Exception as e:  # noqa: BLE001
         print("coinbase candles failed, trying coingecko:", e, file=sys.stderr)
         j2 = get(
             "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart"
-            f"?vs_currency=usd&days={DAYS + 3}&interval=daily"
+            f"?vs_currency=usd&days={DAYS + 3}"
         ).json()
         for ts, v in j2.get("prices", []):
             price[day(ts / 1000)] = float(v)
