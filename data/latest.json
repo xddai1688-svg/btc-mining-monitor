@@ -1,13 +1,13 @@
 {
- "updated_utc": "2026-08-17T03:26:24+00:00",
+ "updated_utc": "2026-08-17T03:34:17+00:00",
  "date": "2026-08-17",
  "sources_ok": {
   "network": true,
-  "miners": false,
-  "stocks": false
+  "miners": true,
+  "stocks": true
  },
  "warnings": [
-  "miners: parse produced 0 rows — check debug/ziven_last.html",
-  "stocks failed: GET failed https://stooq.com/q/l/?s=mara.us,clsk.us,riot.us,iren.us,btdr.us,corz.us,hive.us,wulf.us,cifr.us,hut.us,cang.us,abtc.us,can.us&f=sd2t2ohlcv&h&e=csv: 404 Client Error: Not Found for url: https://stooq.com/q/l/?s=mara.us,clsk.us,riot.us,iren.us,btdr.us,corz.us,hive.us,wulf.us,cifr.us,hut.us,cang.us,abtc.us,can.us&f=sd2t2ohlcv&h&e=csv"
+  "stocks: stooq failed: GET failed https://stooq.com/q/l/?s=mara.us,clsk.us,riot.us,iren.us,btdr.us,corz.us,hive.us,wulf.us,cifr.us,hut.us,cang.us,abtc.us,can.us&f=sd2t2ohlcv&h&e=csv: 404 Client Error: Not Found for url: https://stooq.com/q/l/?s=mara.us,clsk.us,riot.us,iren.us,btdr.us,corz.us,hive.us,wulf.us,cifr.us,hut.us,cang.us,abtc.us,can.us&f=sd2t2ohlcv&h&e=csv",
+  "stocks: used yahoo fallback"
  ]
 }
